@@ -1,0 +1,19 @@
+#!/bin/bash
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=24
+#SBATCH --time=48:00:00
+#SBATCH --mem-per-cpu=4G
+#SBATCH --partition=ncpu
+#SBATCH --output=/flask/scratch/matthewsp/wuhu_rooting/pipeline_scripts/logs/single_%A_%a.log
+
+source /nemo/lab/matthewsp/home/shared/cedric/utils/miniconda3/etc/profile.d/conda.sh
+conda activate metagenomics
+
+wkdir=/flask/scratch/matthewsp/wuhu_rooting
+
+config_file=$wkdir/data/metadata/sra_metadata/filtered_sra_accessions.accessions_only.paired.csv
+
+total=$(cat $config_file|wc -l)
+
+seq 1 $total|xargs -P8 -I {} sh consensus_pipeline.V2.paired.sbs {}
+

@@ -1,0 +1,168 @@
+#!/bin/bash
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=8
+#SBATCH --time=48:00:00
+#SBATCH --mem-per-cpu=4G
+#SBATCH --partition=ncpu
+#SBATCH --array=1-143
+#SBATCH --output=/flask/scratch/matthewsp/wuhu_rooting/pipeline_scripts/logs/paired_%A_%a.log
+
+source /nemo/lab/matthewsp/home/shared/cedric/utils/miniconda3/etc/profile.d/conda.sh
+conda activate metagenomics
+
+wkdir=/flask/scratch/matthewsp/wuhu_rooting
+
+# Parse array input
+#SLURM_ARRAY_TASK_ID=$1
+config_file=$wkdir/data/metadata/sra_metadata/filtered_sra_accessions.accessions_only.paired.csv
+biosample=$(head -n $SLURM_ARRAY_TASK_ID $config_file|tail -n 1)
+to_remove=$wkdir/data/metadata/sra_metadata/runs_to_remove.txt
+
+echo BIOSAMPLE $biosample
+
+basedir=$wkdir/results/pipeline_out
+fastq_dir=$basedir/sra_fastq_files
+qced_dir=$basedir/qced_fastq
+map_dir=$basedir/mapping_out
+vcf_dir=$basedir/vcf_out
+stats_dir=$basedir/stats_out
+adapters=$wkdir/data/genomes/adapters.fa
+ref=$wkdir/data/genomes/MN908947.3
+n_threads=8
+
+biosample=SAMN17710986
+
+read_dir=$fastq_dir/$biosample
+mkdir $read_dir
+
+# Clean up temp files if script dies
+function finish {
+    rm -r $read_dir
+    rm $raw_F $raw_R
+    rm $in1_F $in1_R
+    rm $out1_F $out1_R
+    rm $out2_F $out2_R
+    rm $out3_F $out3_R
+    rm $map_out
+}
+
+#trap finish EXIT INT TERM
+
+# PAUSE IF DISK QUOTA HIT
+test=$(df /flask/scratch/matthewsp|awk '{print $4}'|tail -n1|sed 's|[^.0-9]||g')
+
+echo $test
+while [[ $test < 1000000000 ]]
+do
+    echo $test left! Waiting for storage...
+    sleep 30
+    test=$(df /flask/scratch/matthewsp|awk '{print $4}'|tail -n1|sed 's|[^.0-9]||g')
+done
+
+# Download sra file
+prefetch $biosample \
+    --output-directory $read_dir
+
+# Convert SRA to fastq
+for run in $read_dir/*
+do
+    run_acc=$(echo $run|sed "s|$read_dir/||g")
+    echo $run_acc
+
+    fastq-dump \
+        --outdir $read_dir \
+        --split-3 \
+        --skip-technical \
+        $run/$run_acc.sra
+done
+
+# Remove dual layout runs
+while read line
+do
+    rm -r $read_dir/$line
+done < $to_remove
+
+# Concatenate fastqs
+in1_F=$read_dir/${biosample}_1.fastq
+in1_R=$read_dir/${biosample}_2.fastq
+
+cat $read_dir/*_1.fastq > $in1_F
+cat $read_dir/*_2.fastq > $in1_R
+
+# Outputs
+out1_F=$qced_dir/${biosample}_1.trimmed.fastq.gz
+out1_R=$qced_dir/${biosample}_2.trimmed.fastq.gz
+
+out2_F=$qced_dir/${biosample}_1.trimmed.QCed.fastq.gz
+out2_R=$qced_dir/${biosample}_2.trimmed.QCed.fastq.gz
+
+out3_F=$qced_dir/${biosample}_1.trimmed.QCed.dedup.fastq.gz
+out3_R=$qced_dir/${biosample}_2.trimmed.QCed.dedup.fastq.gz
+
+sam_out=$map_dir/$biosample.sam
+bam_out=$map_dir/$biosample.bam
+
+map_report_out=$stats_dir/$biosample.idxstats.txt
+cov_out=$stats_dir/$biosample.pileup.txt.gz
+sum_out=$stats_dir/$biosample.coverage.txt
+
+# Adapter trimming
+bbduk.sh \
+  threads=$n_threads \
+  in1=$in1_F \
+  in2=$in1_R \
+  out1=$out1_F \
+  out2=$out1_R \
+  ref=$adapters \
+  tossbrokenreads=t \
+  ktrim=r \
+  k=23 \
+  mink=11 \
+  hdist=1 \
+  ziplevel=2 \
+  tpe
+
+rm $in1_F $in2_R
+
+# Quality trim and filter
+bbduk.sh \
+    threads=$n_threads \
+    in1=$out1_F \
+    in2=$out1_R \
+    out1=$out2_F \
+    out2=$out2_R \
+    maq=10 \
+    qtrim=rl \
+    trimq=10 \
+    ziplevel=2
+
+rm $out1_F $out1_R
+
+# MAPPING CLASSIFICATION ##
+# Align reads to SC2 reference, filter and sort to BAM
+bowtie2 \
+  -x $ref \
+  -1 $out2_F -2 $out2_R \
+  --no-mixed \
+  --no-discordant \
+  --no-unal \
+  --seed 66 \
+  --reorder \
+  -p $n_threads | \
+  samtools view -@n_threads -u -F256 -F4 -F2048 - | \
+  samtools sort -@ $n_threads - -o $bam_out
+
+rm $out2_F $out2_R
+
+# Index bam file for faster idxstat
+samtools index -@ $n_threads $bam_out
+
+# Get report
+samtools idxstats $bam_out > $map_report_out
+
+# Get per-position coverage
+samtools mpileup $bam_out| awk '{print $1, $4}'|gzip > $cov_out
+
+# Get coverage summary
+samtools coverage $bam_out | awk '{if ($4 != 0) print}' > $sum_out
+
