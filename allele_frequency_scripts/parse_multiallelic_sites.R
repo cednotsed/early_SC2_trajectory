@@ -1,10 +1,8 @@
 rm(list = ls())
-setwd("c:/git_repos/wuhu_rooting/")
+setwd("c:/git_repos/early_SC2_trajectory/")
 require(tidyverse)
 require(data.table)
 require(foreach)
-require(randomcoloR)
-require(ggrepel)
 
 non_nanopore <- fread("data/metadata/sra_metadata/filtered_sra_accessions.csv") %>%
   filter(platforms != "OXFORD_NANOPORE")
