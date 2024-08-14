@@ -1,0 +1,219 @@
+#!/bin/bash
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=24
+#SBATCH --time=48:00:00
+#SBATCH --mem-per-cpu=5G
+#SBATCH --partition=ncpu
+#SBATCH --array=1-575
+#SBATCH --output=/flask/scratch/matthewsp/early_SC2_trajectory/pipeline_scripts/logs/trans_%A_%a.log
+
+source /nemo/lab/matthewsp/home/shared/cedric/utils/miniconda3/etc/profile.d/conda.sh
+conda activate metagenomics
+
+wkdir=/flask/scratch/matthewsp/early_SC2_trajectory
+
+# Parse array input
+#SLURM_ARRAY_TASK_ID=$1
+#SLURM_ARRAY_TASK_ID=2
+config_file=$wkdir/data/metadata/sra_metadata/filtered_sra_accessions.transition.accessions_only.paired.missing.csv
+biosample=$(head -n $SLURM_ARRAY_TASK_ID $config_file|tail -n 1)
+
+echo BIOSAMPLE $biosample
+
+basedir=$wkdir/results/pipeline_out
+fastq_dir=$basedir/sra_fastq_files
+qced_dir=$basedir/qced_fastq
+map_dir=$basedir/mapping_out
+vcf_dir=$basedir/vcf_out
+stats_dir=$basedir/stats_out
+adapters=/flask/scratch/matthewsp/wuhu_rooting/data/genomes/adapters.fa
+human_ref=/flask/scratch/matthewsp/wuhu_rooting/data/genomes/GCF_009914755.1_T2T-CHM13v2.0_genomic
+ref=/flask/scratch/matthewsp/wuhu_rooting/data/genomes/MN908947.3
+ref_path=$ref.fna
+n_threads=12
+
+#biosample=SAMN15183515
+#biosample=SAMN13922059
+
+read_dir=$fastq_dir/$biosample
+mkdir $read_dir
+
+# Clean up temp files if script dies
+function finish {
+    rm -r $read_dir
+    rm $in1_F $in1_R
+    rm $out1_F $out1_R
+    rm $out2_F $out2_R
+    rm $out3_F $out3_R
+    rm $no_human_bam
+}
+
+trap finish EXIT INT TERM
+
+# PAUSE IF DISK QUOTA HIT
+test=$(df /flask/scratch/matthewsp|awk '{print $4}'|tail -n1|sed 's|[^.0-9]||g')
+
+echo $test
+while [[ $test < 1000000000 ]]
+do
+    echo $test left! Waiting for storage...
+    sleep 30
+    test=$(df /flask/scratch/matthewsp|awk '{print $4}'|tail -n1|sed 's|[^.0-9]||g')
+done
+
+# Download sra file
+prefetch $biosample \
+    --output-directory $read_dir \
+    --max-size 200G
+
+# Convert SRA to fastq
+for run in $read_dir/*
+do
+    run_acc=$(echo $run|sed "s|$read_dir/||g")
+    echo $run_acc
+
+    fastq-dump \
+        --outdir $read_dir \
+        --split-3 \
+        --skip-technical \
+        $run/$run_acc.sra
+done
+
+# Concatenate fastqs
+in_F=$read_dir/${biosample}_1.fastq
+in_R=$read_dir/${biosample}_2.fastq
+
+cat $read_dir/*_1.fastq > $in_F
+cat $read_dir/*_2.fastq > $in_R
+
+# Outputs
+out1_F=$qced_dir/${biosample}_1.trimmed.fastq.gz
+out1_R=$qced_dir/${biosample}_2.trimmed.fastq.gz
+
+out2_F=$qced_dir/${biosample}_1.trimmed.QCed.fastq.gz
+out2_R=$qced_dir/${biosample}_2.trimmed.QCed.fastq.gz
+
+out3_F=$qced_dir/${biosample}_1.trimmed.QCed.no_human.fastq.gz
+out3_R=$qced_dir/${biosample}_2.trimmed.QCed.no_human.fastq.gz
+
+no_human_bam=$map_dir/$biosample.no_human_temp.bam
+bam_out=$map_dir/$biosample.bam
+
+map_report_out=$stats_dir/$biosample.idxstats.txt
+cov_out=$stats_dir/$biosample.pileup.txt.gz
+sum_out=$stats_dir/$biosample.coverage.txt
+vcf_out=$vcf_dir/$biosample.bcftools.vcf.gz
+
+#### ADAPTER TRIMMING ####
+bbduk.sh \
+  threads=$n_threads \
+  in1=$in_F \
+  in2=$in_R \
+  out1=$out1_F \
+  out2=$out1_R \
+  ref=$adapters \
+  tossbrokenreads=t \
+  ktrim=r \
+  k=23 \
+  mink=11 \
+  hdist=1 \
+  ziplevel=2 \
+  tpe
+
+rm $in1_F $in2_R
+rm -r $read_dir
+
+#### QUALITY TRIMMING AND FILTERING ####
+bbduk.sh \
+    threads=$n_threads \
+    in1=$out1_F \
+    in2=$out1_R \
+    out1=$out2_F \
+    out2=$out2_R \
+    maq=20 \
+    qtrim=rl \
+    trimq=20 \
+    ziplevel=2
+
+rm $out1_F $out1_R
+
+#### HUMAN READ REMOVAL ####
+# Remove reads mapping to CHM13 human reference
+bowtie2 \
+  -x $human_ref \
+  -1 $out2_F -2 $out2_R \
+  --no-mixed \
+  --no-discordant \
+  --seed 66 \
+  --reorder \
+  -p $n_threads | \
+  samtools view -@ $n_threads -u -f12 -F256 -F2048 - | \
+  samtools sort -@ $n_threads -u -n - -o $no_human_bam 
+
+rm $out2_F $out2_R
+
+# Sorted BAM to fastq
+samtools collate -@ $n_threads -u -O $no_human_bam | \
+    samtools fastq \
+        -@ $n_threads \
+        -n \
+        -c 2 \
+        -1 $out3_F \
+        -2 $out3_R \
+        -s /dev/null \
+        -0 /dev/null
+
+samtools flagstat $no_human_bam
+
+rm $no_human_bam
+
+#### ALIGN TO SARS-COV-2 ####
+# Align reads to SC2 reference, filter, sort, and mark duplicates
+bowtie2 \
+  -x $ref \
+  -1 $out3_F -2 $out3_R \
+  --no-mixed \
+  --no-discordant \
+  --no-unal \
+  --seed 66 \
+  --reorder \
+  -p $n_threads | \
+  samtools view -@ $n_threads -u -F256 -F2048 - | \
+  samtools sort -@ $n_threads -n -u -| \
+  samtools fixmate -@ $n_threads -u -m - - | \
+  samtools sort -@ $n_threads -u - | \
+  samtools markdup -@ $n_threads -r -l 10000 - $bam_out
+
+rm $out3_F $out3_R
+
+samtools flagstat $bam_out
+
+#### PRINT STATISTICS ####
+# Index bam file for faster idxstat
+samtools index -@ $n_threads $bam_out
+
+# Get report
+samtools idxstats $bam_out > $map_report_out
+
+# Get per-position coverage
+samtools mpileup $bam_out| awk '{print $1, $4}'|gzip > $cov_out
+
+# Get coverage summary
+samtools coverage $bam_out | awk '{if ($4 != 0) print}' > $sum_out
+
+#### VARIANT CALLING ####
+bcftools mpileup \
+    -O u \
+    -f $ref_path \
+    -a FORMAT/AD,FORMAT/DP,INFO/AD \
+    --max-depth 1000000000 \
+    --min-MQ 30 \
+    --min-BQ 30 \
+    $bam_out | \
+    bcftools call \
+        -m \
+        -O v \
+        --keep-unseen-allele \
+        --keep-alts \
+        --ploidy 1 \
+        -o $vcf_out
