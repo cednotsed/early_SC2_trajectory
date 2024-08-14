@@ -1,8 +1,11 @@
-acc_list=../data/metadata/sra_metadata/filtered_sra_accessions.txt
-out_path=/mnt/c/git_repos/wuhu_rooting/data/metadata/sra_metadata/runinfo.csv
+#acc_list=../data/metadata/sra_metadata/filtered_sra_accessions.txt
+#out_path=/mnt/c/git_repos/wuhu_rooting/data/metadata/sra_metadata/runinfo.csv
 
-acc_list=../data/metadata/sra_metadata/filtered_sra_accessions.missing.txt
-out_path=/mnt/c/git_repos/wuhu_rooting/data/metadata/sra_metadata/runinfo.missing.csv
+#acc_list=../data/metadata/sra_metadata/filtered_sra_accessions.missing.txt
+#out_path=/mnt/c/git_repos/wuhu_rooting/data/metadata/sra_metadata/runinfo.missing.csv
+
+acc_list=../data/metadata/sra_metadata/filtered_sra_accessions.delta.txt
+out_path=../data/metadata/sra_metadata/runinfo.delta.csv
 
 # Get headers
 esearch \

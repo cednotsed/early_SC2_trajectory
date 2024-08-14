@@ -5,14 +5,13 @@ require(tidyverse)
 require(data.table)
 require(foreach)
 
-#args <- commandArgs(trailingOnly = T)
+args <- commandArgs(trailingOnly = T)
 file_dir <- "data/metadata/gisaid/monthly_mutations.distinct/"
 file_list <- list.files(file_dir, full.names = T)
-# index <- 20
-#index <- as.numeric(args[1])
-#file_name <- file_list[index]
- file_name <- "data/metadata/gisaid/monthly_mutations/aa_subs.2021-01.080724.tsv"
-# file_name
+index <- as.numeric(args[1])
+file_name <- file_list[index]
+#file_name <- "data/metadata/gisaid/monthly_mutations.distinct/aa_subs.2022-12.080724.tsv"
+
 id <- gsub(file_dir, "", file_name)
 col_month <- str_split(id, "\\.")[[1]][2]
 
@@ -29,6 +28,8 @@ if(n_total > 200000) {
   date_chunk <- date_chunk %>%
     sample_n(200000, replace = F)
 }
+
+n_total <- nrow(date_chunk)
 
 # Get master list
 aa_list <- paste0(date_chunk$aa_substitutions, collapse = ",")
@@ -59,5 +60,5 @@ temp <- tibble(mutation_name = names(col_sums),
   mutate(collection_month = col_month) %>%
   mutate(prop = n_present / n_total)
 
-fwrite(temp, str_glue("results/allele_frequency_out/monthly_frequencies.V2/freq.{col_month}.csv"))
+fwrite(temp, str_glue("results/allele_frequency_out/monthly_frequencies.V2.distinct/freq.{col_month}.csv"))
 

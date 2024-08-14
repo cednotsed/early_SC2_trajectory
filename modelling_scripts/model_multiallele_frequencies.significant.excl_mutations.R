@@ -10,7 +10,7 @@ require(relaimpo)
 
 hookup <- fread("data/metadata/SARS-CoV-2_hookup_table_V3.parsed.csv")
 
-df <- fread("results/allele_frequency_out/all_sites.minor.csv") %>%
+df <- fread("results/allele_frequency_out/all_sites.significant.csv") %>%
   left_join(hookup %>% distinct(mutation_name, ref_AA, var_AA))
 
 # Model allele frequencies versus observed 'fitness'
@@ -58,163 +58,24 @@ change_morsels <- foreach(i = seq(nrow(changes))) %do% {
 
 change_df <- bind_rows(change_morsels)
 
+monthly_df %>%
+  filter(mutation_name %in% c("Spike_D614G", "NSP12_P323L", "N_G204R", "N_R203K")) %>%
+  filter(collection_month == "2020-03")
+
 merged <- df %>%
   left_join(parsed_agg) %>%
   left_join(change_df) %>%
+  left_join(hookup %>% distinct(mutation_name, region, protein_name)) %>%
   filter(!grepl("stop", mutation_name)) %>%
   # Set mutations that were not found in monthly counts to zero
   mutate(global_n = replace_na(global_n, 0),
          max_prop = replace_na(max_prop, 0)) %>%
   mutate(is_fixed = max_prop > 0.9) %>%
   mutate(norm_sd_freq = replace_na(norm_sd_freq, 0)) %>%
-  filter(!grepl("\\*", mutation_name))
+  filter(!grepl("\\*", mutation_name)) %>%
+  filter(!(mutation_name %in% c("Spike_D614G", "NSP12_P323L")))
 
-# fwrite(plot_df, "results/allele_frequency_out/freq_stats.csv")
-
-table(merged$is_fixed)
-
-merged %>%
-  distinct(mutation_name) %>%
-  nrow()
-
-## Explore variables ##
-# Global frequency
-cor_test <- cor.test(merged$max_freq, merged$global_n, method = "spearman")
-rho <- signif(cor_test$estimate, 2)
-
-p1 <- merged %>%
-  ggplot(aes(x = max_freq, y = log10(global_n))) +
-  # geom_point(color = "coral") +
-  geom_bin2d() +
-  scale_fill_viridis_c() +
-  geom_smooth(method = "lm", color = "black", fill = "grey") +
-  theme_bw() +
-  theme(legend.position = "top",
-        text = element_text(family = "sans"),
-        axis.title = element_text(face = "bold"),
-        legend.title = element_text(face = "bold")) +
-  labs(x = "Max intrahost freq.", y = "Log10(no. GISAID sequences)",
-       fill = "No. mutations") +
-  annotate("text", x = 0.3, y = 7, label = str_glue("rho={rho}, p<0.0001"))
-
-ggsave("results/allele_frequency_out/max_freq_versus_global_n.minor.pdf", 
-       plot = p1, width = 4, height = 4)
-
-# cor_test <- cor.test(merged$median_freq, merged$global_n, method = "spearman")
-# rho <- signif(cor_test$estimate, 2)
-# 
-# p1 <- merged %>%
-#   ggplot(aes(x = median_freq, y = log10(global_n))) +
-#   geom_bin2d() +
-#   # geom_point(color = "steelblue") +
-#   geom_smooth(method = "lm", color = "black", fill = "grey") +
-#   theme_bw() +
-#   theme(legend.position = "top",
-#         text = element_text(family = "sans"),
-#         axis.title = element_text(face = "bold"),
-#         legend.title = element_text(face = "bold")) +
-#   scale_fill_viridis_c() +
-#   labs(x = "Median intrahost freq.", 
-#        y = "Log10(no. GISAID sequences)", 
-#        fill = "No. mutations") +
-#   annotate("text", x = 0.3, y = 7, label = str_glue("rho={rho}, p<0.0001"))
-# 
-# ggsave("results/allele_frequency_out/median_freq_versus_global_n.significant.pdf", plot = p1, width = 4, height = 4)
-
-cor_test <- cor.test(merged$n, merged$global_n, method = "spearman")
-rho <- signif(cor_test$estimate, 2)
-
-p2 <- merged %>%
-  ggplot(aes(x = n, y = log10(global_n))) +
-  geom_bin2d() +
-  scale_fill_viridis_c() +
-  geom_smooth(method = "lm", color = "black", fill = "grey") +
-  scale_fill_viridis_c() +
-  theme_bw() +
-  theme(legend.position = "top",
-        text = element_text(family = "sans"),
-        axis.title = element_text(face = "bold"),
-        legend.title = element_text(face = "bold")) +
-  labs(x = "No. biosamples detected", 
-       y = "Log10(no. GISAID sequences)", 
-       fill = "No. mutations") +
-  annotate("text", x = 50, y = 7, label = str_glue("rho={rho}, p<0.0001"))
-
-ggsave("results/allele_frequency_out/n_versus_global_n.minor.pdf", 
-       plot = p2, width = 4, height = 4)
-
-cor_test <- cor.test(merged$norm_sd_freq, merged$global_n, method = "spearman")
-rho <- signif(cor_test$estimate, 2)
-
-p3 <- merged %>%
-  ggplot(aes(x = norm_sd_freq, y = log10(global_n))) +
-  geom_bin2d() +
-  scale_fill_viridis_c() +
-  geom_smooth(method = "lm", color = "black", fill = "grey") +
-  scale_fill_viridis_c() +
-  theme_bw() +
-  theme(legend.position = "top",
-        text = element_text(family = "sans"),
-        axis.title = element_text(face = "bold"),
-        legend.title = element_text(face = "bold")) +
-  labs(x = "Coefficient of variation", 
-       y = "Log10(no. GISAID sequences)", 
-       fill = "No. mutations") +
-  annotate("text", x = 0, y = 7, label = str_glue("rho={rho}, p<0.0001"))
-
-ggsave("results/allele_frequency_out/CoV_versus_global_n.minor.pdf", 
-       plot = p3, width = 4, height = 4)
-
-ggarrange(p1, p2, p3, nrow = 1)
-ggsave("results/allele_frequency_out/sig_predictors.minor.pdf", 
-       width = 12, height = 4)
-# merged %>%
-#   ggplot(aes(x = n_filt, y = log10(global_n))) +
-#   geom_point(color = "steelblue") +
-#   geom_smooth(color = "black", fill = "orange") +
-#   theme_bw() +
-#   labs(x = "No. biosamples detected (freq>0.1)", y = "Log10(no. GISAID sequences)")
-# 
-# ggsave("results/allele_frequency_out/n_filt_versus_global_n.png", width = 4, height = 4)
-test1 <- cor.test(merged$median_freq, merged$global_n, method = "spearman")
-test2 <- cor.test(merged$max_freq, merged$global_n, method = "spearman")
-test3 <- cor.test(merged$n, merged$global_n, method = "spearman")
-test4 <- cor.test(merged$norm_sd_freq, merged$global_n, method = "spearman")
-test5 <- cor.test(merged$abs_charge, merged$global_n, method = "spearman")
-test6 <- cor.test(merged$abs_mw, merged$global_n, method = "spearman")
-test7 <- cor.test(merged$abs_hydropathy, merged$global_n, method = "spearman")
-test8 <- cor.test(merged$blosum62_score, merged$global_n, method = "spearman")
-tibble(var = c("median freq", "max freq", "n", "CV", "charge", "mw", "hydropathy", "blosum62"),
-       rho = c(test1$estimate, test2$estimate, test3$estimate,
-               test4$estimate, test5$estimate, test6$estimate,
-               test7$estimate, test8$estimate),
-       pval = c(test1$p.value, test2$p.value, test3$p.value,
-                test4$p.value, test5$p.value, test6$p.value,
-                test7$p.value, test8$p.value)) %>%
-  mutate(rho = signif(rho, 2), 
-         padj = signif(p.adjust(pval, method = "BH"), 2)) %>% View()
-
-# merged %>%
-#   ggplot(aes(x = factor(blosum62_score), y = log10(global_n), fill = factor(blosum62_score))) +
-#   geom_boxplot() +
-#   # scale_fill_manual(values = c("olivedrab", "olivedrab3", "olivedrab1")) +
-#   theme_bw() +
-#   theme(legend.position = "none") +
-#   labs(x = "BLOSUM62 score", y = "Log10(no. GISAID sequences)")
-# 
-# ggsave("results/allele_frequency_out/blosum62_versus_global_n.significant.png", width = 4, height = 4)
-# 
-# merged %>%
-#   ggplot(aes(x = abs_hydropathy, y = log10(global_n))) +
-#   geom_point() +
-#   geom_smooth(method = "lm")
-#   # scale_fill_manual(values = c("olivedrab", "olivedrab3", "olivedrab1")) +
-#   theme_bw() +
-#   theme(legend.position = "none") +
-#   labs(x = "BLOSUM62 score", y = "Log10(no. GISAID sequences)")
-
-# Model global counts
-linreg <- lm(log10(global_n + 1) ~ n + max_freq + norm_sd_freq + blosum62_score + abs_mw + abs_charge + abs_hydropathy, 
+linreg <- lm(log10(global_n + 1) ~ n + max_freq + blosum62_score + abs_mw + abs_charge + abs_hydropathy, 
              data = merged)
 
 # linreg <- lm(log10(global_n + 1) ~ n + norm_sd_freq + max_freq, 

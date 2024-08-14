@@ -1,5 +1,5 @@
 rm(list = ls())
-setwd("c:/git_repos/wuhu_rooting/")
+setwd("c:/git_repos/early_SC2_trajectory/")
 require(tidyverse)
 require(data.table)
 require(Biostrings)
@@ -7,14 +7,14 @@ require(foreach)
 require(ggpubr)
 require(doParallel)
 
-fna <- readDNAStringSet("data/alignments/reassembled/reassembled.masked.aln")
+fna <- readDNAStringSet("data/alignments/reassembled.masked.aln")
 meta <- fread("data/metadata/sra_metadata/filtered_sra_accessions.csv")
 
 hookup <- fread("data/metadata/SARS-CoV-2_hookup_table_V3.parsed.csv") %>%
-  select(pos = nucleotide_pos, ref_nuc, var_nuc, 
-         region, protein_name, ref_AA, 
-         codon_number, pos_in_codon, codon_from_gene_start, var_AA, 
-         mutation_type, mutation_name)
+  dplyr::select(pos = nucleotide_pos, ref_nuc, var_nuc, 
+                region, protein_name, ref_AA, 
+                codon_number, pos_in_codon, codon_from_gene_start, var_AA, 
+                mutation_type, mutation_name)
 
 non_nanopore <- meta %>%
   filter(platforms != "OXFORD_NANOPORE")
@@ -34,7 +34,7 @@ df_filt <- df %>%
   filter(id %in% non_nanopore$biosample) %>%
   mutate(pos = as.numeric(pos)) %>%
   mutate(var_nuc = gsub("p_", "", allele)) %>%
-  left_join(hookup %>% select(ref_nuc, pos, var_nuc, protein_name, pos_in_codon, ref_AA, codon_number))
+  left_join(hookup %>% dplyr::select(ref_nuc, pos, var_nuc, protein_name, pos_in_codon, ref_AA, codon_number))
 
 # Check if there are any double/triple mutations
 codon_allele_count <- df_filt %>%
@@ -62,7 +62,7 @@ single_df <- codon_allele_count %>%
 # Parse single-position mutations
 parsed_single <- single_df %>%
   left_join(df_filt) %>%
-  left_join(hookup %>% select(ref_nuc, pos, var_nuc, 
+  left_join(hookup %>% dplyr::select(ref_nuc, pos, var_nuc, 
                               protein_name, ref_AA, codon_number, 
                               var_AA, pos_in_codon, mutation_type)) %>%
   mutate(mutation_name = str_glue("{protein_name}_{ref_AA}{codon_number}{var_AA}")) %>%
@@ -80,24 +80,32 @@ parsed_single %>%
             median_freq = median(freq),
             max_freq = max(freq)) %>%
   arrange(desc(n)) %>%
-  fwrite("results/allele_frequency_out/allele_frequencies/single_position_sites.csv")
+  fwrite("results/allele_frequency_out/single_position_sites.csv")
 
 # Treat all mutations as single
 parsed <- df_filt %>%
+  filter(freq > 0.02) %>%
+  # filter(freq > 0.1) %>%
+  # filter(freq < 0.5) %>%
+  # filter(freq >= 0.5) %>%
   left_join(hookup) %>%
   filter(mutation_type == "NS",
          ref_nuc != var_nuc) %>%
   group_by(mutation_name) %>%
   group_by(id, mutation_name) %>%
-  summarise(freq = sum(freq)) %>%
+  summarise(freq = sum(freq))
+
+parsed2 <- parsed %>%
   group_by(mutation_name) %>%
   summarise(n = n_distinct(id),
-            n_filt = n_distinct(id[freq > 0.1]),
+            # n_filt = n_distinct(id[freq > 0.1]),
             median_freq = median(freq),
+            norm_sd_freq = sd(freq) / mean(freq),
             max_freq = max(freq)) %>%
   arrange(desc(n))
 
-fwrite(parsed, "results/allele_frequency_out/allele_frequencies/all_sites.csv")
+fwrite(parsed, "results/allele_frequency_out/all_sites.raw.csv")
+fwrite(parsed2, "results/allele_frequency_out/all_sites.csv")
 
 # # Parse double-position mutations
 # codon_df <- hookup %>%

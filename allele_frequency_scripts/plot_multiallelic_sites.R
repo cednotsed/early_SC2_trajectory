@@ -1,68 +1,56 @@
 rm(list = ls())
-setwd("c:/git_repos/wuhu_rooting/")
+setwd("c:/git_repos/early_SC2_trajectory/")
 require(tidyverse)
 require(data.table)
+require(ggrepel)
 
-merged <- fread("results/allele_frequency_out/merged_frequencies.csv")
-hookup <- fread("data/metadata/SARS-CoV-2_hookup_table_V3.csv") %>%
-  filter(!grepl("element|loop", protein_name))
+hookup <- fread("data/metadata/SARS-CoV-2_hookup_table_V3.parsed.csv") %>%
+  distinct(mutation_name, protein_name, codon_number, region, ref_AA, var_AA)
 
-fna <- readDNAStringSet("data/alignments/reassembled/reassembled.masked.aln")
-meta <- fread("data/metadata/sra_metadata/filtered_sra_accessions.csv")
+merged <- fread("results/allele_frequency_out/all_sites.significant.csv")
+parsed_agg <- fread("results/mutation_out/monthly_freq_aggregate.csv") %>%
+  dplyr::select(mutation_name, max_prop)
 
-non_nanopore <- meta %>%
-  filter(platforms != "OXFORD_NANOPORE")
+plot_df <- merged %>%
+  left_join(parsed_agg) %>%
+  left_join(hookup) %>%
+  filter(!is.na(max_prop)) %>%
+  mutate(fixed_annot = ifelse(max_prop > 0.1, str_glue("{ref_AA}{codon_number}{var_AA}"), NA),
+         is_fixed = max_prop > 0.9) %>%
+  mutate(fixed_annot = ifelse(region == "ORF1ab", str_glue("{protein_name}_{ref_AA}{codon_number}{var_AA}"), fixed_annot))
 
-nanopore <- meta %>%
-  filter(platforms == "OXFORD_NANOPORE")
-
-merged %>%
-  filter(id %in% names(fna)) %>%
-  filter(id %in% non_nanopore$biosample) %>%
-  summarise(n = n_distinct(id))
-
-allele_count <- merged %>%
-  filter(id %in% non_nanopore$biosample) %>%
-  filter(id %in% names(fna)) %>%
-  filter(freq > 0.1 & freq < 0.5) %>%
-  group_by(pos, allele) %>%
-  summarise(n = n_distinct(id)) %>%
-  mutate(var_nuc = gsub("p_", "", allele)) %>%
-  arrange(desc(n))
-
-multi_alleles <- allele_count %>%
-  filter(n > 1) %>%
-  mutate(pos = as.numeric(pos)) %>%
-  left_join(hookup %>%
-              select(pos = nucleotide_pos, ref_nuc, var_nuc, 
-                     region, protein_name, ref_AA, 
-                     codon_number, codon_from_gene_start, var_AA, 
-                     mutation_type, nucleotide_length)) %>%
-  mutate(mutation_name = ifelse(mutation_type == "NS", 
-                                str_glue("{protein_name}_{ref_AA}{codon_number}{var_AA}"),
-                                str_glue("{protein_name}_{ref_nuc}{pos}{var_nuc}"))) %>%
-  mutate(is_reference = ifelse(ref_nuc == var_nuc, "Reference","Non-reference")) %>%
-  mutate(mutation_name = ifelse(n > 10, mutation_name, NA)) %>%
-  filter(n > 1) %>%
-  mutate(protein_name = factor(protein_name, unique(hookup$protein_name)))
-
-pal <- distinctColorPalette(n_distinct(multi_alleles$region))
-pal <- c("#DCAC51", "#CB9E88", "#B44CE7", "#DEE561", "#DDAAD2", "#D5DCD9", "#D1E0A2", "#897FD4", "#84B2D8",
+# pal <- c("#DCAC51", "#CB9E88", "#B44CE7", "#DEE561", "#DDAAD2", "#D5DCD9", "#D1E0A2", "#897FD4", "#84B2D8",
          "#7ADD91", "#DC6AC2", "#90EA4F", "#E45B63", "#70D7D0")
-pal <- setNames(pal, unique(multi_alleles$region))
+# pal <- setNames(pal, unique(plot_df$region))
+pal <- list(ORF1ab = "#84B2D8", S = "#7ADD91", ORF3a = "#DEE561", 
+            M = "#CB9E88", ORF7a = "#D5DCD9", ORF8 = "#897FD4", 
+            N = "#B44CE7")
 
-multi_alleles %>%
-  ggplot(aes(x = pos, y = n, fill = region, shape = mutation_type)) +
-  geom_point(color = "black", 
-             alpha = 0.8) +
-  scale_shape_manual(values = c(21, 24)) +
-  scale_fill_manual(values = pal, guide = "none") +
-  geom_text_repel(aes(label = mutation_name)) +
-  facet_grid(rows = vars(is_reference)) +
-  labs(x = "Position on Wuhan-Hu-1", y = "No. biosamples", shape = "Mutation type") +
-  theme_bw() 
+plot_df %>%
+  mutate(region = factor(region, c("ORF1ab", "S", "ORF3a", "M", "ORF7a", "ORF8", "N"))) %>%
+  filter(max_prop > 0.1) %>%
+  ggplot(aes(x = region, y = max_prop)) +
+  geom_point(aes(fill = region, shape = is_fixed),
+             position = position_jitter(seed = 66),
+             color = "black", 
+             alpha = 0.8,
+             size = 3) +
+  scale_shape_manual(values = c(21, 23)) +
+  scale_fill_manual(values = pal) +
+  geom_text_repel(aes(label = fixed_annot), 
+                  position = position_jitter(seed = 66),
+                  size = 4,
+                  ylim = c(0.2, 0.9)) +
+  theme_bw() +
+  theme(legend.position = "none", 
+        # text = element_text(family = "sans"),
+        axis.title = element_text(face = "bold"),
+        axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.3)) +
+  labs(x = "Position on Wuhan-Hu-1", y = "No. biosamples detected", shape = "Max. monthly freq.")
 
-multi_alleles %>%
+ggsave("results/allele_frequency_out/mutations_detected.pdf", dpi = 600, height = 3, width = 12)
+
+plot_df %>%
   group_by(protein_name, region, nucleotide_length) %>%
   summarise(n = n_distinct(mutation_name)) %>%
   filter(nucleotide_length > 100) %>%
@@ -75,6 +63,7 @@ multi_alleles %>%
   theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.3)) +
   labs(x = "Region", y = "Mutations / region length", fill = "ORF")
 
+ggsave("results/allele_frequency_out/mutations_detected.pdf", dpi = 600, height = 5, width = 12)
 # hookup %>%
 #   group_by(protein_name) %>%
 #   summarise(min= min(nucleotide_pos),

@@ -1,12 +1,13 @@
 rm(list = ls())
-setwd("c:/git_repos/wuhu_rooting/")
+setwd("c:/git_repos/early_SC2_trajectory/")
 require(tidyverse)
 require(data.table)
 require(Biostrings)
 require(foreach)
 require(ggpubr)
 
-freq_df <- fread("results/allele_frequency_out/single_position_sites.raw.csv")
+freq_df <- fread("results/allele_frequency_out/all_sites.raw.csv") %>%
+  filter(freq > 0.02)
 
 hookup <- fread("data/metadata/SARS-CoV-2_hookup_table_V3.parsed.csv")
 
@@ -23,23 +24,10 @@ mat[is.na(mat)] <- 0
 col_sums <- colSums(mat > 0)
 count_df <- tibble(mutation = names(col_sums), 
                    n_biosamples = col_sums)
-to_keep <- names(col_sums)[col_sums > 20]
+to_keep <- names(col_sums)[col_sums > 5]
 
 mat_filt <- mat[, to_keep]
 
-# cor_mat <- cor(mat_filt)
-# 
-# cor_mat[upper.tri(cor_mat)] <- NA
-# 
-# rownames(cor_mat) <- colnames(mat_filt)
-# 
-# cor_df <- as.data.frame(cor_mat) %>%
-#   rownames_to_column("mutation1") %>%
-#   pivot_longer(!mutation1, names_to = "mutation2", values_to = "corr") %>%
-#   filter(mutation1 != mutation2) %>%
-#   filter(!is.na(corr)) %>%
-#   arrange(desc(corr))
-# 
 pairs <- combn(to_keep, 2)
 
 print(ncol(pairs))
@@ -47,12 +35,17 @@ print(ncol(pairs))
 morsels <- foreach(i = seq(ncol(pairs))) %do% {
   print(i)
   pair <- pairs[, i]
-  pair <- c("Spike_Q506K", "NSP8_D163Y")
+  # pair <- c("NS3_G251V", "N_Q239H")
   mat_temp <- mat[, pair]
-  samples_to_keep <- rowSums(mat_temp) != 0
-  mat_temp <- mat_temp[samples_to_keep, ]
-  corr <- cor(mat_temp[, 1], mat_temp[, 2])
-  tibble(mutation1 = pair[1], mutation2 = pair[2], corr = corr)
+  mat_bool <- mat_temp > 0
+  samples_to_keep <- rowSums(mat_bool) == 2
+  if(sum(samples_to_keep) > 5) {
+    mat_temp <- mat_temp[samples_to_keep, ]
+    corr <- cor(mat_temp[, 1], mat_temp[, 2])
+    tibble(mutation1 = pair[1], mutation2 = pair[2], corr = corr, n_comparisons = sum(samples_to_keep))
+  } else {
+    return(NULL)
+  }
 }
 
 merged <- bind_rows(morsels) %>%
@@ -62,12 +55,11 @@ merged <- bind_rows(morsels) %>%
   left_join(count_df %>% dplyr::rename(mutation2 = mutation, n_biosamples2 = n_biosamples))
 
 merged_filt <- merged %>%
-  filter(rsquared > 0.2)
+  filter(rsquared > 0.25)
 
-fwrite(merged, "results/allele_frequency_out/linkage.csv")
-fwrite(merged_filt, "results/allele_frequency_out/linkage.r50.csv")
+fwrite(merged, "results/linkage_out/linkage.n5.csv")
+fwrite(merged_filt, "results/linkage_out/linkage.n5.rsquared25.csv")
 
-fread("results/allele_frequency_out/linkage.r50.csv")
 # gisaid_meta <- fread("data/metadata/gisaid/gisaid_metatadata.080724.filt.tsv")
 # 
 # gisaid_filt <- gisaid_meta %>%
