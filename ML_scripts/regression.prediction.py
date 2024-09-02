@@ -12,24 +12,30 @@ from xgboost import XGBRegressor
 # Get paths
 cwd = Path.cwd()
 print(cwd)
-datasets = cwd / '../results/modelling_out/mutation_stats/'
+datasets = cwd / '../results/prediction_out/mutation_stats/'
 results = cwd / '../results/ML_out'
 
 ## Data Preprocessing
 ### Load data
-dataset = sys.argv[1]
-df = pd.read_csv(datasets / f'{dataset}.stats.csv')
+dataset = 'early_to_alpha'
+test = 'alpha_to_ba1'
+
+df_train = pd.read_csv(datasets / f'{dataset}.stats.csv')
 
 print(dataset)
 
-X = df.loc[:, ['n', 'median_freq', 'max_freq',
-               'blosum62_score', 'delta_charge', 'abs_charge',
-               'delta_mw', 'abs_mw', 'delta_hydropathy',
-               'abs_hydropathy']]
+def preprocess(df):
+    X = df.loc[:, ['n', 'median_freq', 'max_freq',
+                   'blosum62_score', 'delta_charge', 'abs_charge',
+                   'delta_mw', 'abs_mw', 'delta_hydropathy',
+                   'abs_hydropathy']]
 
-X['n'] = np.log10(X['n'])
+    X['n'] = np.log10(X['n'])
 
-y = np.log10(df.loc[:, 'global_n'] + 1)
+    y = np.log10(df.loc[:, 'global_n'] + 1)
+
+    return(X, y)
+
 
 ## Model training and evaluation
 def optimise_evaluate(X, y):
@@ -74,18 +80,28 @@ def optimise_evaluate(X, y):
 
     return outer_results, best_params
 
-
 # Tune hyperparameters
-raw_results, raw_params = optimise_evaluate(X, y)
+X_train, y_train = preprocess(df_train)
+raw_results, raw_params = optimise_evaluate(X_train, y_train)
 
 # Results
 res = pd.DataFrame(raw_results).mean()[['test_r2', 'test_mae']]
 
-# SHAP analysis
+# Train final model
 np.random.seed(66)
-raw_model = XGBRegressor(**raw_params, enable_categorical=True)
-raw_model.fit(X, y)
+raw_model = XGBRegressor(**raw_params)
+raw_model.fit(X_train, y_train)
 
+# Test on later timeframe
+df_test = pd.read_csv(datasets / f'{test}.stats.csv')
+X_test, y_test = preprocess(df_test)
+
+y_pred = raw_model.predict(X_test)
+
+test_results = pd.DataFrame({'y_test': y_test, 'y_pred': y_pred, 'mutation_name': df_test.mutation_name})
+test_results.to_csv(results / 'delta_test_results.csv', index=False)
+
+# SHAP analysis
 X1000 = shap.utils.sample(X, 1000)
 
 explainer_ebm = shap.Explainer(raw_model.predict, X1000)

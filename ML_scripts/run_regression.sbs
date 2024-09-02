@@ -1,0 +1,13 @@
+#!/bin/bash
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=24
+#SBATCH --time=48:00:00
+#SBATCH --mem=96G
+#SBATCH --partition=ncpu
+#SBATCH --output=/flask/scratch/matthewsp/early_SC2_trajectory/ML_scripts/logs/reg_%A_%a.log
+
+source /nemo/lab/matthewsp/home/shared/cedric/utils/miniconda3/etc/profile.d/conda.sh
+conda activate mashin
+
+#python regression.transition.py delta
+python regression.prediction.py
