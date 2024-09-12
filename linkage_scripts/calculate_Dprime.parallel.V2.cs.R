@@ -80,16 +80,21 @@ foreach(idx = seq(length(index_list)),
         .packages = c("tidyverse", "data.table", "foreach")) %dopar% {
   .GlobalEnv$d <- d
   .GlobalEnv$save_freq_df <- sav_freq_df
+  .GlobalEnv$index_list <- index_list
+  .GlobalEnv$mat_filt <- mat_filt
   
   temp_idx_list <- index_list[[idx]]
   chunk <- pairs[, temp_idx_list]
   
   link_morsels <- foreach(i = seq(ncol(chunk))) %do% {
+    print(i)
     pair <- chunk[, i]
     mut1 <- pair[1]
     mut2 <- pair[2]
     
-    row_counts <- rowSums(mat_filt[, c(mut1, mut2)])
+    mat_chunk <- mat_filt[, c(mut1, mut2)]
+    
+    row_counts <- rowSums(mat_chunk)
     pAB <- sum(row_counts == 2) / total_n
     
     return(tibble(mutation1 = mut1, mutation2 = mut2, pAB = pAB))
