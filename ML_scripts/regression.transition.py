@@ -12,7 +12,7 @@ from xgboost import XGBRegressor
 # Get paths
 cwd = Path.cwd()
 print(cwd)
-datasets = cwd / '../results/modelling_out/mutation_stats/'
+datasets = cwd / '../results/prediction_out/mutation_stats/'
 results = cwd / '../results/ML_out'
 
 ## Data Preprocessing
@@ -95,7 +95,7 @@ shap_values_ebm = explainer_ebm(X)
 # Parse SHAP values
 data_df = pd.DataFrame(shap_values_ebm.data, columns=shap_values_ebm.feature_names)
 shap_df = pd.DataFrame(shap_values_ebm.values, columns=shap_values_ebm.feature_names).add_suffix('.shap')
-merged = pd.concat([data_df, shap_df], axis=1)
+merged = pd.concat([df.loc[:, 'mutation_name'], data_df, shap_df], axis=1)
 
 # Beeswarm plot
 shap.plots.beeswarm(shap_values_ebm, show=False)

@@ -18,7 +18,7 @@ results = cwd / '../results/ML_out'
 ## Data Preprocessing
 ### Load data
 dataset = sys.argv[1]
-df = pd.read_csv(datasets / f'{dataset}.linkage_stats.csv')
+df = pd.read_csv(datasets / f'{dataset}.dprime_stats.csv')
 
 print(dataset)
 
@@ -27,7 +27,8 @@ X = df.loc[:, ['n', 'median_freq', 'max_freq',
                'delta_mw', 'abs_mw', 'delta_hydropathy',
                'abs_hydropathy', 'max_corr', 'n_linked',
                'n_linked_binary', 'max_obs_corr', 'n_obs_linked',
-               'n_obs_linked_binary']]
+               'n_obs_linked_binary', 'max_dprime', 'n_dprime_linked',
+               'n_dprime_linked_binary']]
 
 X['n'] = np.log10(X['n'])
 
@@ -104,6 +105,6 @@ shap.plots.beeswarm(shap_values_ebm, show=False)
 
 # Export results
 shap.plots.beeswarm(shap_values_ebm, show=False)
-merged.to_csv(results / f'shap_out/{dataset}.linkage.shap.csv', index=0)
-raw_results.to_csv(results / f'results_out/{dataset}.linkage.results.csv', index=0)
-plt.savefig(results / f'beeswarm_out/{dataset}.linkage.pdf', bbox_inches='tight')
+merged.to_csv(results / f'shap_out/{dataset}.dprime.shap.csv', index=0)
+raw_results.to_csv(results / f'results_out/{dataset}.dprime.results.csv', index=0)
+plt.savefig(results / f'beeswarm_out/{dataset}.dprime.pdf', bbox_inches='tight')

@@ -1,13 +1,50 @@
 #!/bin/bash
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=24
+#SBATCH --cpus-per-task=16
 #SBATCH --time=48:00:00
-#SBATCH --mem=96G
+#SBATCH --mem=16G
 #SBATCH --partition=ncpu
 #SBATCH --output=/flask/scratch/matthewsp/early_SC2_trajectory/ML_scripts/logs/reg_%A_%a.log
 
 source /nemo/lab/matthewsp/home/shared/cedric/utils/miniconda3/etc/profile.d/conda.sh
 conda activate mashin
 
+#python regression.transition.py early
+#python regression.transition.py alpha
 #python regression.transition.py delta
-python regression.prediction.py
+#python regression.transition.py ba1
+#python regression.transition.py ba5
+#python regression.transition.py xbb
+#python regression.transition.py pirola
+
+#python regression.cross_dataset.py early_to_delta delta_to_xbb
+#python regression.cross_dataset.py early_to_ba1 ba5_to_end
+#python regression.cross_dataset.py alpha_to_ba1 ba1_to_xbb
+#python regression.cross_dataset.py ba1_to_xbb xbb_to_end
+#python regression.cross_dataset.py delta_to_ba5 xbb_to_end
+
+#python regression.transition.linkage.py alpha
+#python regression.transition.linkage.py delta
+#python regression.transition.linkage.py ba1
+#python regression.transition.linkage.py ba5
+#python regression.transition.linkage.py xbb
+#python regression.transition.linkage.py pirola
+
+#python regression.transition.dprime_only.py alpha
+#python regression.transition.dprime_only.py delta
+#python regression.transition.dprime_only.py ba1
+#python regression.transition.dprime_only.py ba5
+#python regression.transition.dprime_only.py xbb
+#python regression.transition.dprime_only.py pirola
+
+#python regression.transition.dprime.py alpha
+#python regression.transition.dprime.py delta
+#python regression.transition.dprime.py ba1
+python regression.transition.dprime.py ba5
+#python regression.transition.dprime.py xbb
+#python regression.transition.dprime.py pirola
+ 
+#python regression.cross_dataset.linkage.py alpha_to_ba1 ba1_to_xbb
+#python regression.cross_dataset.linkage.py ba1_to_xbb xbb_to_end
+#python regression.cross_dataset.linkage.py delta_to_ba5 xbb_to_end
+
