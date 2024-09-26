@@ -29,6 +29,7 @@ X = df.loc[:, ['n', 'median_freq', 'max_freq',
                'n_dprime_linked_binary', 'delta_expr', 'delta_bind', 'mean_escape']]
 
 X['n'] = np.log10(X['n'])
+X = X.assign(calc_binary=(X['max_dprime'] != -1).astype('int32'))
 X.mean_escape = X.mean_escape.fillna(-1)
 X.delta_bind = X.delta_bind.fillna(-100)
 X.delta_expr = X.delta_bind.fillna(-100)
@@ -46,7 +47,8 @@ def optimise_evaluate(X, y):
 
     param_grid = dict(max_depth=max_depth,
                       n_estimators=n_estimators,
-                      colsample_bytree=colsample_bytree)
+                      colsample_bytree=colsample_bytree,
+                      n_jobs=[1])
 
     inner_cv = KFold(n_splits=10, shuffle=True)
     outer_cv = KFold(n_splits=10, shuffle=True)
@@ -84,16 +86,22 @@ raw_results, raw_params = optimise_evaluate(X, y)
 # Results
 res = pd.DataFrame(raw_results).mean()[['test_r2', 'test_mae']]
 
-# SHAP analysis
+# Fit final model
 np.random.seed(66)
 raw_model = XGBRegressor(**raw_params, enable_categorical=True)
 raw_model.fit(X, y)
 
+# Get prediction errors
+y_pred = raw_model.predict(X)
+
+test_results = pd.DataFrame({'y_test': y, 'y_pred': y_pred, 'mutation_name': df.mutation_name})
+test_results.to_csv(results / f'within_dataset_results/{dataset}.partition.dprime_only.results.csv', index=False)
+
+# SHAP analysis
 X1000 = shap.utils.sample(X, 1000)
 
 explainer_ebm = shap.Explainer(raw_model.predict, X1000)
 shap_values_ebm = explainer_ebm(X)
-
 
 # Parse SHAP values
 data_df = pd.DataFrame(shap_values_ebm.data, columns=shap_values_ebm.feature_names)
@@ -105,6 +113,6 @@ shap.plots.beeswarm(shap_values_ebm, show=False)
 
 # Export results
 shap.plots.beeswarm(shap_values_ebm, show=False)
-merged.to_csv(results / f'shap_out/{dataset}.dprime_only.shap.csv', index=0)
-raw_results.to_csv(results / f'results_out/{dataset}.dprime_only.results.csv', index=0)
-plt.savefig(results / f'beeswarm_out/{dataset}.dprime_only.pdf', bbox_inches='tight')
+merged.to_csv(results / f'shap_out/{dataset}.partition.dprime_only.shap.csv', index=0)
+raw_results.to_csv(results / f'results_out/{dataset}.partition.dprime_only.results.csv', index=0)
+plt.savefig(results / f'beeswarm_out/{dataset}.partition.dprime_only.pdf', bbox_inches='tight')

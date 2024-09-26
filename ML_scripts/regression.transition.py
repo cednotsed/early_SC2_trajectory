@@ -43,7 +43,8 @@ def optimise_evaluate(X, y):
 
     param_grid = dict(max_depth=max_depth,
                       n_estimators=n_estimators,
-                      colsample_bytree=colsample_bytree)
+                      colsample_bytree=colsample_bytree,
+                      n_jobs=[1])
 
     inner_cv = KFold(n_splits=10, shuffle=True)
     outer_cv = KFold(n_splits=10, shuffle=True)

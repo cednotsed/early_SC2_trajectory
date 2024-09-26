@@ -1,0 +1,7 @@
+early_to_ba1,xbb_to_end
+early_to_delta,delta_to_xbb
+early_to_ba1,ba5_to_end
+alpha_to_ba1,ba1_to_end
+alpha_to_delta,delta_to_ba1
+ba1_to_ba5,ba5_to_xbb
+ba1_to_xbb,xbb_to_end

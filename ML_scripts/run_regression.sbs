@@ -1,8 +1,9 @@
 #!/bin/bash
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=16
+#SBATCH --cpus-per-task=24
 #SBATCH --time=48:00:00
-#SBATCH --mem=16G
+#SBATCH --mem=32G
+#SBATCH --array=1-7
 #SBATCH --partition=ncpu
 #SBATCH --output=/flask/scratch/matthewsp/early_SC2_trajectory/ML_scripts/logs/reg_%A_%a.log
 
@@ -40,7 +41,7 @@ conda activate mashin
 #python regression.transition.dprime.py alpha
 #python regression.transition.dprime.py delta
 #python regression.transition.dprime.py ba1
-python regression.transition.dprime.py ba5
+#python regression.transition.dprime.py ba5
 #python regression.transition.dprime.py xbb
 #python regression.transition.dprime.py pirola
  
@@ -48,3 +49,28 @@ python regression.transition.dprime.py ba5
 #python regression.cross_dataset.linkage.py ba1_to_xbb xbb_to_end
 #python regression.cross_dataset.linkage.py delta_to_ba5 xbb_to_end
 
+# Single datasets
+config_file=datasets.txt
+dataset=$(head -n $SLURM_ARRAY_TASK_ID $config_file|tail -n 1)
+#python regression.transition.py $dataset
+#python regression.transition.partition.py $dataset
+#python regression.transition.partition.dprime_only.py $dataset
+#python regression.transition.dprime_only.py $dataset
+#python regression.transition.prior.py $dataset
+#python regression.transition.prior.dprime_only.py $dataset
+python regression.transition.spike.py $dataset
+
+
+# Cross datasets
+#config_file=cross_datasets.csv
+#dataset=$(head -n $SLURM_ARRAY_TASK_ID $config_file|tail -n 1)
+
+#train=$(echo $dataset|cut -d',' -f1)
+#test=$(echo $dataset|cut -d',' -f2)
+#python regression.cross_dataset.py $train $test
+#python regression.cross_dataset.partition.py $train $test
+#python regression.cross_dataset.partition.dprime_only.py $train $test
+#python regression.cross_dataset.dprime_only.py $train $test
+#python regression.cross_dataset.prior.py $train $test
+#python regression.cross_dataset.prior.dprime_only.py $train $test
+#python regression.cross_dataset.spike.py $train $test

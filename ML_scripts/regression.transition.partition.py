@@ -21,17 +21,17 @@ dataset = sys.argv[1]
 df = pd.read_csv(datasets / f'{dataset}.dprime_stats.csv')
 
 print(dataset)
+
 X = df.loc[:, ['n', 'median_freq', 'max_freq',
                'blosum62_score', 'delta_charge', 'abs_charge',
                'delta_mw', 'abs_mw', 'delta_hydropathy',
-               'abs_hydropathy', 'max_corr', 'n_linked',
-               'n_linked_binary', 'max_dprime', 'n_dprime_linked',
-               'n_dprime_linked_binary', 'delta_expr', 'delta_bind', 'mean_escape']]
+               'abs_hydropathy', 'delta_expr', 'delta_bind', 'mean_escape']]
 
 X['n'] = np.log10(X['n'])
 X.mean_escape = X.mean_escape.fillna(-1)
 X.delta_bind = X.delta_bind.fillna(-100)
 X.delta_expr = X.delta_bind.fillna(-100)
+X = X.assign(calc_binary=(df['max_dprime'] != -1).astype('int32'))
 y = np.log10(df.loc[:, 'global_n'] + 1)
 
 ## Model training and evaluation
@@ -46,7 +46,8 @@ def optimise_evaluate(X, y):
 
     param_grid = dict(max_depth=max_depth,
                       n_estimators=n_estimators,
-                      colsample_bytree=colsample_bytree)
+                      colsample_bytree=colsample_bytree,
+                      n_jobs=[1])
 
     inner_cv = KFold(n_splits=10, shuffle=True)
     outer_cv = KFold(n_splits=10, shuffle=True)
@@ -105,6 +106,6 @@ shap.plots.beeswarm(shap_values_ebm, show=False)
 
 # Export results
 shap.plots.beeswarm(shap_values_ebm, show=False)
-merged.to_csv(results / f'shap_out/{dataset}.dprime_only.shap.csv', index=0)
-raw_results.to_csv(results / f'results_out/{dataset}.dprime_only.results.csv', index=0)
-plt.savefig(results / f'beeswarm_out/{dataset}.dprime_only.pdf', bbox_inches='tight')
+merged.to_csv(results / f'shap_out/{dataset}.partition.shap.csv', index=0)
+raw_results.to_csv(results / f'results_out/{dataset}.partition.results.csv', index=0)
+plt.savefig(results / f'beeswarm_out/{dataset}.partition.pdf', bbox_inches='tight')

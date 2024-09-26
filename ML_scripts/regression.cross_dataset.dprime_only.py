@@ -20,7 +20,7 @@ results = cwd / '../results/ML_out'
 dataset = sys.argv[1]
 test = sys.argv[2]
 
-df_train = pd.read_csv(datasets / f'{dataset}.linkage_stats.csv')
+df_train = pd.read_csv(datasets / f'{dataset}.dprime_stats.csv')
 
 print(dataset)
 
@@ -29,11 +29,13 @@ def preprocess(df):
                    'blosum62_score', 'delta_charge', 'abs_charge',
                    'delta_mw', 'abs_mw', 'delta_hydropathy',
                    'abs_hydropathy', 'max_corr', 'n_linked',
-                   'n_linked_binary', 'max_obs_corr', 'n_obs_linked',
-                   'n_obs_linked_binary']]
+                   'n_linked_binary', 'max_dprime', 'n_dprime_linked',
+                   'n_dprime_linked_binary', 'delta_bind', 'delta_expr', 'mean_escape']]
 
     X['n'] = np.log10(X['n'])
-
+    X.mean_escape = X.mean_escape.fillna(-1)
+    X.delta_bind = X.delta_bind.fillna(-100)
+    X.delta_expr = X.delta_bind.fillna(-100)
     y = np.log10(df.loc[:, 'global_n'] + 1)
 
     return(X, y)
@@ -51,7 +53,8 @@ def optimise_evaluate(X, y):
 
     param_grid = dict(max_depth=max_depth,
                       n_estimators=n_estimators,
-                      colsample_bytree=colsample_bytree)
+                      colsample_bytree=colsample_bytree,
+                      n_jobs=[1])
 
     inner_cv = KFold(n_splits=10, shuffle=True)
     outer_cv = KFold(n_splits=10, shuffle=True)
@@ -95,13 +98,13 @@ raw_model = XGBRegressor(**raw_params)
 raw_model.fit(X_train, y_train)
 
 # Test on later timeframe
-df_test = pd.read_csv(datasets / f'{test}.linkage_stats.csv')
+df_test = pd.read_csv(datasets / f'{test}.dprime_stats.csv')
 X_test, y_test = preprocess(df_test)
 
 y_pred = raw_model.predict(X_test)
 
 test_results = pd.DataFrame({'y_test': y_test, 'y_pred': y_pred, 'mutation_name': df_test.mutation_name})
-test_results.to_csv(results / f'cross_dataset_results/train_{dataset}.test_{test}.linkage.results.csv', index=False)
+test_results.to_csv(results / f'cross_dataset_results/train_{dataset}.test_{test}.dprime_only.results.csv', index=False)
 
 # SHAP analysis
 X1000 = shap.utils.sample(X_train, 1000)
@@ -119,6 +122,6 @@ shap.plots.beeswarm(shap_values_ebm, show=False)
 
 # Export results
 shap.plots.beeswarm(shap_values_ebm, show=False)
-merged.to_csv(results / f'shap_out/{dataset}.linkage.shap.csv', index=0)
-raw_results.to_csv(results / f'results_out/{dataset}.linkage.results.csv', index=0)
-plt.savefig(results / f'beeswarm_out/{dataset}.linkage.pdf', bbox_inches='tight')
+merged.to_csv(results / f'shap_out/{dataset}.dprime_only.shap.csv', index=0)
+raw_results.to_csv(results / f'results_out/{dataset}.dprime_only.results.csv', index=0)
+plt.savefig(results / f'beeswarm_out/{dataset}.dprime_only.pdf', bbox_inches='tight')
