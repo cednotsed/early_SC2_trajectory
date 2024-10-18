@@ -7,7 +7,7 @@
 export acc_list=../data/metadata/sra_metadata/filtered_sra_accessions.delta.txt
 export out_dir=../data/metadata/sra_metadata/runinfo_temp.delta
 
-export NCBI_API_KEY=ed474d19fd845a6bc6f1b0dba7e803a17308
+export NCBI_API_KEY=
 
 cat $acc_list|xargs -P10 -I{} sh -c \
     'acc={}; \
